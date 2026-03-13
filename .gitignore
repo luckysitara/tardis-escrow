@@ -1,0 +1,86 @@
+node_modules/
+*/node_modules/
+
+# -----------------------------
+# Rust
+# -----------------------------
+target/
+**/*.rs.bk
+Cargo.lock
+
+# -----------------------------
+# Anchor
+# -----------------------------
+.anchor
+target/deploy/
+target/idl/
+target/types/
+target/debug/
+target/release/
+
+# Local validator ledger
+test-ledger/
+ledger/
+
+# Anchor keys (very important)
+*.json
+!package.json
+!tsconfig.json
+
+# -----------------------------
+# Node
+# -----------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# -----------------------------
+# Environment variables
+# -----------------------------
+.env
+.env.local
+.env.*.local
+
+# -----------------------------
+# Logs
+# -----------------------------
+logs
+*.log
+
+# -----------------------------
+# OS files
+# -----------------------------
+.DS_Store
+Thumbs.db
+
+# -----------------------------
+# VSCode
+# -----------------------------
+.vscode/
+
+# -----------------------------
+# JetBrains
+# -----------------------------
+.idea/
+
+# -----------------------------
+# Anchor test artifacts
+# -----------------------------
+coverage/
+.cache/
+dist/
+
+# -----------------------------
+# Solana CLI
+# -----------------------------
+.solana/
+config.yml
+
+# -----------------------------
+# Local keypairs
+# -----------------------------
+test-keypair.json
+id.json
+keypair.json
