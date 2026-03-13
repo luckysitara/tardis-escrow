@@ -4,9 +4,9 @@ import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { WalletModalProvider, useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { clusterApiUrl, PublicKey, SystemProgram } from '@solana/web3.js';
 import { Toaster, toast } from 'react-hot-toast';
-import { Layers, ArrowRightLeft, LayoutDashboard, Coins, Info, ShieldCheck, Wallet, Droplets, Loader2, RefreshCcw, ExternalLink } from 'lucide-react';
+import { Layers, ArrowRightLeft, LayoutDashboard, Coins, Info, ShieldCheck, Wallet, Droplets, Loader2, RefreshCcw } from 'lucide-react';
 import * as anchor from '@coral-xyz/anchor';
-import { getAssociatedTokenAddress, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { getAssociatedTokenAddress, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, createAssociatedTokenAccountInstruction, getAccount } from '@solana/spl-token';
 import idlData from './idl.json';
 
 import '@solana/wallet-adapter-react-ui/styles.css';
@@ -20,12 +20,14 @@ if (typeof window !== 'undefined' && !window.Buffer) {
 
 const idl = idlData as any;
 const SOL_MINT = new PublicKey("So11111111111111111111111111111111111111112");
+const PROGRAM_ID = new PublicKey("AgrWR4tV2EkujabgQJt1sTM1jKuDL8CU3T8ug251tQV1");
 const TARDIS_SEED = Buffer.from("tardis");
 
 // Devnet Oracles (SOL/USD)
 const PYTH_SOL_PRICE_FEED = new PublicKey("J83w4Be9icXvEwhfTAURMghSU8nB69mW2WEJGrDWjhkh");
 const SWITCHBOARD_SOL_PRICE_FEED = new PublicKey("AdHpkYuey9M4i2ga7n9re2LsqSbs6fuy6SpxLbvHmSrh");
 
+// --- Custom Wallet Button ---
 const CustomWalletButton = () => {
     const { setVisible } = useWalletModal();
     const { publicKey, connected, disconnect } = useWallet();
@@ -63,18 +65,21 @@ const DashboardContent = () => {
 
     const program = useMemo(() => {
         if (!wallet.publicKey || !wallet.signTransaction) return null;
-        const provider = new anchor.AnchorProvider(connection, wallet as any, { preflightCommitment: 'processed' });
-        return new anchor.Program(idl, provider);
+        try {
+            const provider = new anchor.AnchorProvider(connection, wallet as any, { preflightCommitment: 'processed' });
+            return new anchor.Program(idl, provider);
+        } catch (e) {
+            console.error("Program init failed", e);
+            return null;
+        }
     }, [connection, wallet.publicKey, wallet.connected]);
 
     const fetchOffers = async () => {
         if (!program) return;
         setFetching(true);
         try {
-            // Fetch all loan accounts
             const allLoans = await program.account.loan.all();
-            // Filter for STATUS_OFFERED (1)
-            const activeOffers = allLoans.filter((l: any) => l.account.status === 1);
+            const activeOffers = allLoans.filter((l: any) => l.account.status === 1); // STATUS_OFFERED
             setOffers(activeOffers);
         } catch (e) {
             console.error("Fetch offers failed", e);
@@ -136,7 +141,7 @@ const DashboardContent = () => {
             const repaymentBN = amountBN.muln(11).divn(10); 
             const expiry = new anchor.BN(Math.floor(Date.now() / 1000) + 86400 * 7);
 
-            const tx = await program.methods.initializeOffer(
+            await program.methods.initializeOffer(
                 amountBN,
                 collateralBN,
                 repaymentBN,
@@ -152,10 +157,9 @@ const DashboardContent = () => {
                 systemProgram: SystemProgram.programId,
             } as any).rpc();
             
-            console.log("Offer init tx:", tx);
             toast.success("Lending offer live!");
             setLendAmount('');
-            fetchOffers(); // Refresh marketplace
+            fetchOffers();
         } catch (e: any) {
             console.error(e);
             toast.error("Initialization failed: " + e.message);
@@ -178,6 +182,21 @@ const DashboardContent = () => {
             const borrowerLoanAta = await getAssociatedTokenAddress(loanData.loanMint, wallet.publicKey);
             const borrowerCollateralAta = await getAssociatedTokenAddress(loanData.collateralMint, wallet.publicKey);
 
+            // Ensure ATA exists or add creation to pre-instructions
+            const preInstructions = [];
+            try {
+                await getAccount(connection, borrowerCollateralAta);
+            } catch (e) {
+                preInstructions.push(
+                    createAssociatedTokenAccountInstruction(
+                        wallet.publicKey,
+                        borrowerCollateralAta,
+                        wallet.publicKey,
+                        loanData.collateralMint
+                    )
+                );
+            }
+
             await program.methods.acceptOffer().accounts({
                 borrower: wallet.publicKey,
                 lender: loanData.lender,
@@ -192,7 +211,7 @@ const DashboardContent = () => {
                 switchboardPriceInfo: SWITCHBOARD_SOL_PRICE_FEED,
                 tokenProgram: TOKEN_PROGRAM_ID,
                 systemProgram: SystemProgram.programId,
-            } as any).rpc();
+            } as any).preInstructions(preInstructions).rpc();
 
             toast.success("Loan accepted! Funds received.", { id: loadingToast });
             fetchOffers();
@@ -305,12 +324,12 @@ const DashboardContent = () => {
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                 <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'rgba(153, 69, 255, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 'bold', color: '#9945FF' }}>T</div>
                                                 <div>
-                                                    <span style={{ display: 'block', fontWeight: 'bold' }}>{offer.account.loanAmount.toNumber() / 1e6} TARDIS</span>
+                                                    <span style={{ display: 'block', fontWeight: 'bold' }}>{(offer.account.loanAmount.toNumber() / 1e6).toFixed(2)} TARDIS</span>
                                                     <span style={{ fontSize: '0.7rem', color: '#555' }}>Lender: {offer.account.lender.toBase58().slice(0, 4)}...{offer.account.lender.toBase58().slice(-4)}</span>
                                                 </div>
                                             </div>
                                             <div style={{ textAlign: 'right' }}>
-                                                <span style={{ display: 'block', color: '#14F195', fontWeight: 'bold', fontSize: '0.875rem' }}>{offer.account.collateralAmount.toNumber() / 1e9} SOL</span>
+                                                <span style={{ display: 'block', color: '#14F195', fontWeight: 'bold', fontSize: '0.875rem' }}>{(offer.account.collateralAmount.toNumber() / 1e9).toFixed(4)} SOL</span>
                                                 <span style={{ fontSize: '0.7rem', color: '#555' }}>Collateral</span>
                                             </div>
                                         </div>
