@@ -15,7 +15,7 @@ lending_program = "AgrWR4tV2EkujabgQJt1sTM1jKuDL8CU3T8ug251tQV1"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
